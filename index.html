@@ -251,10 +251,18 @@
             <div class="input-group">
                 <label for="lumpSumMonth">Person B Top-Up Month</label>
                 <select id="lumpSumMonth">
-                    <option value="1">January</option><option value="2">February</option><option value="3">March</option>
-                    <option value="4">April</option><option value="5">May</option><option value="6">June</option>
-                    <option value="7">July</option><option value="8">August</option><option value="9">September</option>
-                    <option value="10">October</option><option value="11" selected>November</option><option value="12">December</option>
+                    <option value="1">January</option>
+                    <option value="2">February</option>
+                    <option value="3">March</option>
+                    <option value="4">April</option>
+                    <option value="5">May</option>
+                    <option value="6">June</option>
+                    <option value="7">July</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">October</option>
+                    <option value="11" selected>November</option>
+                    <option value="12">December</option>
                 </select>
             </div>
             <div class="input-group">
@@ -367,6 +375,32 @@
         </div>
     </div>
 
+    <!-- Top-Up Timing Comparison -->
+    <div class="card" style="margin-top:24px;">
+        <h2>Top-Up Timing Comparison</h2>
+        <p style="font-size:0.85rem;color:var(--text-light);margin-top:0;">
+            Compare the same yearly lump-sum top-up across all 12 months using the current expected dividend rate.
+            Earlier months generally receive more estimated monthly dividend under this dashboard's simulation model.
+        </p>
+        <div class="scrollable-table" style="max-height:none;">
+            <table class="asnb-table">
+                <thead>
+                    <tr>
+                        <th>Top-Up Month</th>
+                        <th>Annual Lump Sum</th>
+                        <th>Estimated 1st-Year Dividend</th>
+                        <th>End-of-Year Value</th>
+                        <th>Difference vs November</th>
+                    </tr>
+                </thead>
+                <tbody id="timingComparisonBody"></tbody>
+            </table>
+        </div>
+        <div class="chart-container" style="margin-top:20px;">
+            <canvas id="timingChart"></canvas>
+        </div>
+    </div>
+
     <!-- Visual Chart -->
     <div class="card">
         <h2>Growth Visualization & Long-Term Projection</h2>
@@ -396,32 +430,6 @@
                 </thead>
                 <tbody id="projectionBody"></tbody>
             </table>
-        </div>
-    </div>
-
-    <!-- Top-Up Timing Comparison -->
-    <div class="card">
-        <h2>Top-Up Timing Comparison</h2>
-        <p style="font-size:0.85rem;color:var(--text-light);margin-top:0;">
-            Compare the estimated outcome of making the same yearly lump-sum top-up in each month.
-            Earlier top-ups have more months in the model to earn estimated dividends.
-        </p>
-        <div class="scrollable-table" style="max-height:none;">
-            <table class="asnb-table">
-                <thead>
-                    <tr>
-                        <th>Top-Up Month</th>
-                        <th>Annual Top-Up</th>
-                        <th>1st-Year Est. Dividend</th>
-                        <th>Ending Value After 1 Year</th>
-                        <th>Dividend vs November</th>
-                    </tr>
-                </thead>
-                <tbody id="timingComparisonBody"></tbody>
-            </table>
-        </div>
-        <div class="chart-container" style="margin-top:20px;height:320px;">
-            <canvas id="timingComparisonChart"></canvas>
         </div>
     </div>
 
@@ -589,7 +597,7 @@ function formatNumber(amount) {
  * Simulates one strategy.
  * Dividend is estimated monthly and added to the balance at year-end.
  * Person A deposits every month.
- * Person B deposits the annual lump sum in the selected month.
+ * Person B deposits the annual lump sum in November.
  */
 function simulateStrategy(strategy, depositAmount, annualRate, totalYears, captureTable, lumpSumMonth = 11) {
     let balance = 0;
@@ -802,6 +810,57 @@ function renderProjection(resultA, resultB) {
     ).join('');
 }
 
+function renderTimingComparison(lumpSumAmt, baseRate) {
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const results = monthNames.map((name, index) => {
+        const month = index + 1;
+        const result = simulateStrategy('lump', lumpSumAmt, baseRate, 1, false, month);
+        return { month, name, dividend: result.yearly[0]?.dividend || 0, value: result.endingValue };
+    });
+
+    const november = results[10]?.dividend || 0;
+    document.getElementById('timingComparisonBody').innerHTML = results.map(item => `
+        <tr${item.month === 11 ? ' style="font-weight:700;"' : ''}>
+            <td>${item.name}${item.month === 11 ? ' (Default)' : ''}</td>
+            <td>${formatRM(lumpSumAmt)}</td>
+            <td>${formatRM(item.dividend)}</td>
+            <td><strong>${formatRM(item.value)}</strong></td>
+            <td>${formatRM(item.dividend - november)}</td>
+        </tr>
+    `).join('');
+
+    const canvas = document.getElementById('timingChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    if (window.timingChartInstance) window.timingChartInstance.destroy();
+
+    window.timingChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: results.map(item => item.name),
+            datasets: [{
+                label: 'Estimated 1st-Year Dividend',
+                data: results.map(item => item.dividend),
+                backgroundColor: 'rgba(2, 132, 199, 0.65)',
+                borderColor: '#0284c7',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { callback: value => 'RM ' + Number(value).toLocaleString() }
+                }
+            },
+            plugins: {
+                tooltip: { callbacks: { label: context => 'Estimated Dividend: RM ' + Number(context.raw).toLocaleString('en-MY', {minimumFractionDigits:2, maximumFractionDigits:2}) } }
+            }
+        }
+    });
+}
+
 function renderChart(resultA, resultB) {
     const labels = resultA.yearly.map(row => 'Year ' + row.year);
     const dataA = resultA.yearly.map(row => row.value);
@@ -860,10 +919,10 @@ function calculateAll() {
     const bestRate = Math.max(0, getNumber('bestRate'));
     const totalYears = Math.max(1, Math.floor(getNumber('years', 1)));
     const tableMode = document.getElementById('tableMode').value;
-    renderTimingComparison(lumpSumAmt, baseRate);
     const lumpSumMonth = Math.min(12, Math.max(1, parseInt(document.getElementById('lumpSumMonth').value, 10) || 11));
     const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    document.getElementById('lumpMonthLabel').innerText = monthNames[lumpSumMonth - 1];
+    const selectedLumpMonthName = monthNames[lumpSumMonth - 1];
+    document.getElementById('lumpMonthLabel').innerText = selectedLumpMonthName;
 
     const resultA = simulateStrategy('monthly', monthlyAmt, baseRate, totalYears, true);
     const resultB = simulateStrategy('lump', lumpSumAmt, baseRate, totalYears, true, lumpSumMonth);
@@ -883,6 +942,7 @@ function calculateAll() {
     renderScenarios(monthlyAmt, lumpSumAmt, worstRate, baseRate, bestRate, totalYears, lumpSumMonth);
     renderProjection(resultA, resultB);
     renderChart(resultA, resultB);
+    renderTimingComparison(lumpSumAmt, baseRate);
     renderDividendTable(resultA, resultB, tableMode);
 
     // Variable-price ASNB fund calculation
@@ -932,7 +992,9 @@ function calculateAll() {
     lastResults = {
         tableMode,
         tableRows: lastResults.tableRows,
-        tableHeaders: lastResults.tableHeaders
+        tableHeaders: lastResults.tableHeaders,
+        lumpSumMonth,
+        lumpSumMonthName: selectedLumpMonthName
     };
 }
 
@@ -941,69 +1003,6 @@ function calculateAll() {
  * dividend table, as requested.
  * No AutoTable plugin is required; this uses simple jsPDF text drawing.
  */
-function renderTimingComparison(lumpSumAmt, rate) {
-    const body = document.getElementById('timingComparisonBody');
-    if (!body) return;
-
-    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const rows = [];
-    let novemberDividend = 0;
-
-    for (let month = 1; month <= 12; month++) {
-        let balance = 0;
-        let yearlyDividend = 0;
-
-        for (let m = 1; m <= 12; m++) {
-            if (m === month) balance += lumpSumAmt;
-            yearlyDividend += balance * (rate / 12);
-        }
-
-        balance += yearlyDividend;
-        if (month === 11) novemberDividend = yearlyDividend;
-        rows.push({ month: monthNames[month - 1], dividend: yearlyDividend, ending: balance });
-    }
-
-    body.innerHTML = rows.map(r => {
-        const diff = r.dividend - novemberDividend;
-        return `<tr>
-            <td><strong>${r.month}</strong></td>
-            <td>${formatRM(lumpSumAmt)}</td>
-            <td>${formatRM(r.dividend)}</td>
-            <td>${formatRM(r.ending)}</td>
-            <td>${diff >= 0 ? '+' : ''}${formatRM(diff)}</td>
-        </tr>`;
-    }).join('');
-
-    if (window.timingComparisonChart) window.timingComparisonChart.destroy();
-    const ctx = document.getElementById('timingComparisonChart');
-    if (ctx) {
-        window.timingComparisonChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: rows.map(r => r.month),
-                datasets: [{
-                    label: 'Estimated 1st-Year Dividend',
-                    data: rows.map(r => r.dividend),
-                    backgroundColor: 'rgba(37, 99, 235, 0.65)',
-                    borderColor: 'rgba(37, 99, 235, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: { beginAtZero: true, ticks: { callback: value => 'RM ' + Number(value).toLocaleString() } }
-                },
-                plugins: {
-                    legend: { display: true },
-                    tooltip: { callbacks: { label: context => 'Estimated dividend: RM ' + Number(context.raw).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) } }
-                }
-            }
-        });
-    }
-}
-
 function exportPDFReport() {
     if (!window.jspdf || !window.jspdf.jsPDF) {
         alert('PDF library could not be loaded. Please check your internet connection and reload the page.');
